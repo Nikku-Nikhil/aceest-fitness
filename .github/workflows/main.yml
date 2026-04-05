@@ -1,0 +1,95 @@
+name: ACEest Fitness – CI/CD Pipeline
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  IMAGE_NAME: aceest-fitness
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ── Job 1: Build & Lint ───────────────────────────────────────────────────
+  build-lint:
+    name: "Build & Lint"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint with Flake8
+        run: |
+          pip install flake8
+          flake8 app.py --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 app.py --count --max-line-length=120 --statistics
+
+  # ── Job 2: Docker Image Assembly ─────────────────────────────────────────
+  docker-build:
+    name: "Docker Image Assembly"
+    runs-on: ubuntu-latest
+    needs: build-lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Save image as artifact
+        run: docker save ${{ env.IMAGE_NAME }}:${{ github.sha }} | gzip > image.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: image.tar.gz
+          retention-days: 1
+
+  # ── Job 3: Automated Testing ─────────────────────────────────────────────
+  automated-tests:
+    name: "Automated Testing"
+    runs-on: ubuntu-latest
+    needs: docker-build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Load Docker image
+        run: docker load < image.tar.gz
+
+      - name: Run Pytest inside container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/test_app.py:/app/test_app.py:ro \
+            --entrypoint pytest \
+            ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            test_app.py -v --tb=short
+
+      - name: Run Pytest with coverage (host)
+        run: |
+          pip install -r requirements.txt
+          pytest test_app.py -v --cov=app --cov-report=xml --cov-report=term-missing
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 7
