@@ -10,7 +10,7 @@ pipeline {
         stage('Checkout') {
             steps {
                 git branch: 'main',
-                    url: 'https://github.com/<YOUR_USERNAME>/aceest-fitness.git'
+                    url: 'https://github.com/Nikku-Nikhil/aceest-fitness'
                 echo "✅ Code checked out."
             }
         }
