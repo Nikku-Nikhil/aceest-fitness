@@ -78,7 +78,7 @@ jobs:
           name: docker-image
 
       - name: Load Docker image
-        run: docker load < image.tar.gz
+        run: gunzip -c image.tar.gz | docker load
 
       - name: Run Pytest inside container
         run: |
