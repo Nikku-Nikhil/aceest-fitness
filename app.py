@@ -38,7 +38,10 @@ WORKOUT_TYPES = ["Strength", "Hypertrophy", "Conditioning", "Mixed", "Mobility"]
 
 EXERCISE_POOL = {
     "Strength":     ["Squat", "Deadlift", "Bench Press", "Overhead Press", "Pull-Up", "Barbell Row"],
-    "Hypertrophy":  ["Leg Press", "Incline Dumbbell Press", "Lat Pulldown", "Lateral Raise", "Bicep Curl", "Tricep Extension"],
+    "Hypertrophy": [
+        "Leg Press", "Incline Dumbbell Press", "Lat Pulldown",
+        "Lateral Raise", "Bicep Curl", "Tricep Extension",
+    ],
     "Conditioning": ["Running", "Cycling", "Rowing", "Burpees", "Jump Rope", "Kettlebell Swings"],
     "Full Body":    ["Push-Up", "Pull-Up", "Lunge", "Plank", "Dumbbell Row", "Dumbbell Press"],
 }
@@ -46,6 +49,7 @@ EXERCISE_POOL = {
 # ─────────────────────────────────────────────
 # Database helpers
 # ─────────────────────────────────────────────
+
 
 def get_db():
     """Return a per-request SQLite connection (stored on Flask's g object)."""
@@ -121,6 +125,7 @@ def init_db():
 # Pure business-logic helpers  (easily unit-tested)
 # ─────────────────────────────────────────────
 
+
 def calculate_calories(weight_kg: float, program_name: str) -> int:
     """Return estimated daily kcal target (weight × program factor)."""
     if program_name not in PROGRAMS:
@@ -193,6 +198,7 @@ def generate_ai_program(program_name: str, experience: str, seed: int = 42) -> l
 # Routes
 # ─────────────────────────────────────────────
 
+
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({"gym": "ACEest Fitness & Gym", "status": "operational"})
@@ -230,15 +236,15 @@ def get_client(name):
 def save_client():
     """Mirrors save_client() from your tkinter app."""
     data = request.get_json(silent=True) or {}
-    name    = (data.get("name") or "").strip()
+    name = (data.get("name") or "").strip()
     program = data.get("program", "")
-    age     = data.get("age")
-    height  = data.get("height")
-    weight  = data.get("weight")
+    age = data.get("age")
+    height = data.get("height")
+    weight = data.get("weight")
     membership_status = data.get("membership_status", "Active")
-    membership_end    = data.get("membership_end")
-    target_weight     = data.get("target_weight")
-    target_adherence  = data.get("target_adherence")
+    membership_end = data.get("membership_end")
+    target_weight = data.get("target_weight")
+    target_adherence = data.get("target_adherence")
 
     if not name:
         abort(400, description="Field 'name' is required.")
@@ -279,8 +285,8 @@ def save_progress(name):
     if not db.execute("SELECT 1 FROM clients WHERE name=?", (name,)).fetchone():
         abort(404, description=f"Client '{name}' not found.")
 
-    data       = request.get_json(silent=True) or {}
-    adherence  = data.get("adherence")
+    data = request.get_json(silent=True) or {}
+    adherence = data.get("adherence")
     if adherence is None:
         abort(400, description="Field 'adherence' (0-100) is required.")
     try:
@@ -321,12 +327,12 @@ def log_workout(name):
     if not db.execute("SELECT 1 FROM clients WHERE name=?", (name,)).fetchone():
         abort(404, description=f"Client '{name}' not found.")
 
-    data         = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True) or {}
     workout_type = data.get("workout_type", "")
-    duration     = data.get("duration_min", 60)
+    duration = data.get("duration_min", 60)
     workout_date = data.get("date", date.today().isoformat())
-    notes        = data.get("notes", "")
-    exercises    = data.get("exercises", [])   # list of {name, sets, reps, weight}
+    notes = data.get("notes", "")
+    exercises = data.get("exercises", [])   # list of {name, sets, reps, weight}
 
     if workout_type not in WORKOUT_TYPES:
         abort(400, description=f"workout_type must be one of {WORKOUT_TYPES}.")
@@ -369,11 +375,11 @@ def log_metrics(name):
     if not db.execute("SELECT 1 FROM clients WHERE name=?", (name,)).fetchone():
         abort(404, description=f"Client '{name}' not found.")
 
-    data        = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True) or {}
     metric_date = data.get("date", date.today().isoformat())
-    weight      = data.get("weight")
-    waist       = data.get("waist")
-    bodyfat     = data.get("bodyfat")
+    weight = data.get("weight")
+    waist = data.get("waist")
+    bodyfat = data.get("bodyfat")
 
     if not metric_date:
         abort(400, description="Field 'date' is required.")
@@ -449,9 +455,11 @@ def membership(name):
 def bad_request(e):
     return jsonify({"error": "Bad Request", "message": e.description}), 400
 
+
 @app.errorhandler(404)
 def not_found(e):
     return jsonify({"error": "Not Found", "message": e.description}), 404
+
 
 @app.errorhandler(500)
 def server_error(e):
