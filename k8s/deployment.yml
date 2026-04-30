@@ -1,0 +1,64 @@
+# ── Rolling Update Deployment ──────────────────────────────────────────────────
+# Strategy: RollingUpdate
+# Kubernetes replaces pods one-by-one: maxSurge=1 means one extra pod comes up
+# before an old one is terminated; maxUnavailable=0 ensures zero downtime.
+#
+# Rollback command:
+#   kubectl rollout undo deployment/aceest-fitness -n aceest
+#
+# Apply:
+#   kubectl apply -f k8s/namespace.yml
+#   kubectl apply -f k8s/service.yml
+#   kubectl apply -f k8s/deployment.yml
+# ─────────────────────────────────────────────────────────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-fitness
+  namespace: aceest
+  labels:
+    app: aceest-fitness
+    version: v3.2.4
+    strategy: rolling-update
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1        # One extra pod spins up during update
+      maxUnavailable: 0  # Never reduce below desired replica count
+  selector:
+    matchLabels:
+      app: aceest-fitness
+  template:
+    metadata:
+      labels:
+        app: aceest-fitness
+        version: v3.2.4
+    spec:
+      containers:
+        - name: aceest-fitness
+          image: snikhil2001/aceest-fitness:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"

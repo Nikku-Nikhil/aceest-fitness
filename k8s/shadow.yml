@@ -1,0 +1,174 @@
+# ── Shadow Deployment ──────────────────────────────────────────────────────────
+# Strategy: Shadow (Dark Launch)
+#
+# Real production traffic is served by `aceest-production`.
+# A duplicate of every request is also sent to `aceest-shadow` (the new version).
+# Shadow responses are discarded — users never see shadow output.
+# This lets you test the new version under real load with zero user impact.
+#
+# NOTE: True traffic mirroring requires a service mesh (e.g. Istio).
+# This manifest demonstrates the Deployment + Service architecture.
+# The Istio VirtualService mirror config is shown as comments below.
+#
+# Rollback: simply delete the shadow deployment — production is unaffected.
+#   kubectl delete deployment aceest-shadow -n aceest
+#
+# Apply:
+#   kubectl apply -f k8s/namespace.yml
+#   kubectl apply -f k8s/shadow.yml
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── PRODUCTION Deployment (serves all user traffic) ───────────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-production
+  namespace: aceest
+  labels:
+    app: aceest-fitness
+    role: production
+    version: v3.2.4
+    strategy: shadow
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: aceest-fitness
+      role: production
+  template:
+    metadata:
+      labels:
+        app: aceest-fitness
+        role: production
+        version: v3.2.4
+    spec:
+      containers:
+        - name: aceest-fitness
+          image: snikhil2001/aceest-fitness:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
+
+---
+# ── SHADOW Deployment (receives mirrored traffic, responses discarded) ─────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-shadow
+  namespace: aceest
+  labels:
+    app: aceest-fitness
+    role: shadow
+    version: v4.0.0
+    strategy: shadow
+  annotations:
+    description: "Dark-launch shadow; receives mirrored prod traffic for validation"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aceest-fitness
+      role: shadow
+  template:
+    metadata:
+      labels:
+        app: aceest-fitness
+        role: shadow
+        version: v4.0.0
+    spec:
+      containers:
+        - name: aceest-fitness
+          image: snikhil2001/aceest-fitness:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
+
+---
+# ── Production Service ────────────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-production-svc
+  namespace: aceest
+  labels:
+    app: aceest-fitness
+    role: production
+spec:
+  type: NodePort
+  selector:
+    app: aceest-fitness
+    role: production
+  ports:
+    - name: http
+      port: 80
+      targetPort: 5000
+      nodePort: 30083
+
+---
+# ── Shadow Service (receives mirrored requests) ───────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-shadow-svc
+  namespace: aceest
+  labels:
+    app: aceest-fitness
+    role: shadow
+spec:
+  type: NodePort
+  selector:
+    app: aceest-fitness
+    role: shadow
+  ports:
+    - name: http
+      port: 80
+      targetPort: 5000
+      nodePort: 30084
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Istio VirtualService (if Istio is installed) to enable true traffic mirroring:
+#
+# apiVersion: networking.istio.io/v1alpha3
+# kind: VirtualService
+# metadata:
+#   name: aceest-mirror
+#   namespace: aceest
+# spec:
+#   hosts: ["aceest-production-svc"]
+#   http:
+#     - route:
+#         - destination:
+#             host: aceest-production-svc
+#             port: { number: 80 }
+#       mirror:
+#         host: aceest-shadow-svc
+#         port: { number: 80 }
+#       mirrorPercentage:
+#         value: 100.0
+# ─────────────────────────────────────────────────────────────────────────────

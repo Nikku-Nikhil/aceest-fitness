@@ -1,0 +1,132 @@
+# ── Blue-Green Deployment ──────────────────────────────────────────────────────
+# Strategy: Blue-Green
+#
+# Two identical environments run simultaneously:
+#   BLUE  → current stable version (live, receives traffic)
+#   GREEN → new version (deployed but idle, ready for cutover)
+#
+# To switch traffic from Blue to Green (zero-downtime cutover):
+#   kubectl patch service aceest-bluegreen-svc -n aceest \
+#     -p '{"spec":{"selector":{"slot":"green"}}}'
+#
+# To rollback (switch back to Blue):
+#   kubectl patch service aceest-bluegreen-svc -n aceest \
+#     -p '{"spec":{"selector":{"slot":"blue"}}}'
+#
+# Apply:
+#   kubectl apply -f k8s/namespace.yml
+#   kubectl apply -f k8s/blue-green.yml
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── BLUE Deployment (current stable – receives live traffic) ──────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-blue
+  namespace: aceest
+  labels:
+    app: aceest-fitness
+    slot: blue
+    version: v3.2.4
+    strategy: blue-green
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: aceest-fitness
+      slot: blue
+  template:
+    metadata:
+      labels:
+        app: aceest-fitness
+        slot: blue
+        version: v3.2.4
+    spec:
+      containers:
+        - name: aceest-fitness
+          image: snikhil2001/aceest-fitness:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
+
+---
+# ── GREEN Deployment (new version – idle until cutover) ───────────────────────
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-green
+  namespace: aceest
+  labels:
+    app: aceest-fitness
+    slot: green
+    version: v4.0.0
+    strategy: blue-green
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: aceest-fitness
+      slot: green
+  template:
+    metadata:
+      labels:
+        app: aceest-fitness
+        slot: green
+        version: v4.0.0
+    spec:
+      containers:
+        - name: aceest-fitness
+          # Replace with new version image tag when ready
+          image: snikhil2001/aceest-fitness:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "250m"
+
+---
+# ── Service – routes traffic to BLUE by default ───────────────────────────────
+# Change selector 'slot: blue' → 'slot: green' to cut over
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-bluegreen-svc
+  namespace: aceest
+  labels:
+    app: aceest-fitness
+    strategy: blue-green
+spec:
+  type: NodePort
+  selector:
+    app: aceest-fitness
+    slot: blue       # ← change to 'green' to cut over
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 5000
+      nodePort: 30081
